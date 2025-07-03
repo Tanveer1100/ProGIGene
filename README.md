@@ -41,6 +41,106 @@ Place a file named `final_training_dataset.csv` in the root directory. The datas
 - Molecular features across omics platforms
 
 ---
+```
+📁 ProGIGene/
+├── 📁 data_processing/ 
+│ ├── 💊 clinical_data.py
+│ ├── 🧬 copy_number_variation.py
+│ ├── 📝 final_training_dataset.py
+│ ├── 🧬 gene_expression.py
+│ ├── 🧫 immune_subtype.py
+│ ├── 🧬 methylation.py
+│ ├── 🧬 mutation.py
+│ ├── 🔗 pathways.py
+│ └── 📊 protein_expression.py
+│
+├── 📁 external_cohort_validation/ 
+│ └── 🌐✅ geo_cohort_validation.py
+│
+├── 📁 model
+│ ├── 🧠 gene_only_train.py
+│ ├── 🧠 multi_omics_train.py
+│ └── 📈 plots.py
+
+```
+---
+### `data_processing/clinical_data.py`
+- Data Link: [Xena](https://tcga-pancan-atlas-hub.s3.us-east-1.amazonaws.com/download/Survival_SupplementalTable_S1_20171025_xena_sp)
+- Loads and cleans raw clinical data by renaming columns, selecting key features, and filtering for early-stage gastrointestinal cancers with valid progression-free interval times.
+- Generates a binary label indicating early disease progression within one year and exports the processed dataset for further analysis - `early_stage_clinical_labeled_dataset.csv`
+
+### `data_processing/copy_number_variation.py`
+- Loads and preprocesses [CNV](https://tcga-xena-hub.s3.us-east-1.amazonaws.com/download/TCGA.PANCAN.sampleMap%2FGistic2_CopyNumber_Gistic2_all_data_by_genes.gz) and clinical data(`early_stage_clinical_labeled_dataset.csv`), applies thresholding to convert continuous CNV values into discrete categories (-1, 0, 1), and filters features with variation in at least 10 samples.
+
+- Merges CNV data with early progression labels, applies variance filtering and scaling, then trains a regularized logistic regression model (ElasticNet) to identify predictive features.
+
+- Selects the top 300 CNV features based on model coefficients and exports the resulting dataset for downstream analysis or modeling `copy_number_variation.csv`
+
+### `data_processing/gene_expression.py`
+- Processes [gene expression](https://tcga-pancan-atlas-hub.s3.us-east-1.amazonaws.com/download/EB%2B%2BAdjustPANCAN_IlluminaHiSeq_RNASeqV2.geneExp.xena.gz) and clinical data(`early_stage_clinical_labeled_dataset.csv`) by applying log transformation, selecting highly variable genes, and identifying co-expression modules correlated with early cancer progression.
+
+- Trains an ElasticNet-regularized logistic regression model to select the top 500 predictive genes, which are saved `na_exp.csv` for downstream analysis or model development.
+
+### `data_processing/immune_subtype.py`
+
+- Loads and standardizes [immune subtype](https://tcga-pancan-atlas-hub.s3.us-east-1.amazonaws.com/download/Subtype_Immune_Model_Based.txt.gz) labels by formatting them into lowercase, underscore-separated categories with a consistent 'immune_' prefix.
+
+- Filters the immune subtype data to include only clinical samples(`early_stage_clinical_labeled_dataset.csv`) of interest and saves the cleaned dataset(`immune_subtype.csv`) for downstream analysis.
+
+### `data_processing/methylation.py`
+
+-   Loads, filters, and merges methylation data across multiple cancer types - [ESCA](https://tcga-xena-hub.s3.us-east-1.amazonaws.com/download/TCGA.ESCA.sampleMap%2FHumanMethylation450.gz), [COAD](https://tcga-xena-hub.s3.us-east-1.amazonaws.com/download/TCGA.COAD.sampleMap%2FHumanMethylation450.gz), [LIHC](https://tcga-xena-hub.s3.us-east-1.amazonaws.com/download/TCGA.LIHC.sampleMap%2FHumanMethylation450.gz), [PAAD](https://tcga-xena-hub.s3.us-east-1.amazonaws.com/download/TCGA.PAAD.sampleMap%2FHumanMethylation450.gz), [READ](https://tcga-xena-hub.s3.us-east-1.amazonaws.com/download/TCGA.READ.sampleMap%2FHumanMethylation450.gz), [STAD](https://tcga-xena-hub.s3.us-east-1.amazonaws.com/download/TCGA.STAD.sampleMap%2FHumanMethylation450.gz), selecting the top 2000 high-variance CpG sites and aligning them with clinical progression labels(`early_stage_clinical_labeled_dataset.csv`).
+
+-   Preprocesses data by imputing missing values and scaling, then trains an elastic net logistic regression model to identify and export the top 500 predictive CpG features(`methylation_top_shap.csv`).
+
+### `data_processing/mutation.py`
+
+- Filters out silent mutations from [mutation data set](https://tcga-pancan-atlas-hub.s3.us-east-1.amazonaws.com/download/mc3.v0.2.8.PUBLIC.nonsilentGene.xena.gz) and clinical data (`early_stage_clinical_labeled_dataset.csv`), converts gene mutation data into a binary matrix per sample, and retains only genes mutated in at least 5 samples.
+
+- Merges with clinical labels, adds mutation counts per sample, and exports the processed dataset(`gene_mutation.csv`) for downstream analysis.
+
+### `data_processing/pathways.py`
+
+- Cleans and standardizes pathway names, transposes the [gene-pathway matrix](https://tcga-pancan-atlas-hub.s3.us-east-1.amazonaws.com/download/merge_merged_reals_sample_level.txt.gz), and formats column names with a pathway_ prefix for consistency mapped with clinical data (`early_stage_clinical_labeled_dataset.csv`)
+
+- Filters the data to include only clinical samples of interest and exports the processed pathway features(`early_stage_gene_pathway.csv`) for further analysis.
+
+
+### `data_processing/protein_expression.py`
+
+-   Loads and transposes the [protein expression matrix](https://tcga-pancan-atlas-hub.s3.us-east-1.amazonaws.com/download/TCGA-RPPA-pancan-clean.xena.gz), prefixes features, filters for clinical samples(`early_stage_clinical_labeled_dataset.csv`), and fills missing values.
+
+-   Selects the top 300 most variable proteins across samples and exports the processed dataset(`protein_expression.csv`) for downstream modeling.
+
+### `data_processing/final_training_dataset.py`
+
+-   Merges clinical(`early_stage_clinical_labeled_dataset.csv`), immune subtype(`immune_subtype.csv`), and multi-omics datasets (RNA(`rna_exp.csv`), mutation(`gene_mutation.csv`), CNV(`copy_number_variation.csv`), methylation(`methylation_top_shap.csv`), protein(`protein_expression`), and pathway(`early_stage_gene_pathway.csv`)) into a unified feature matrix.
+
+-   Applies one-hot encoding to categorical clinical variables, fills missing values with zeros, and exports the final dataset(`final_training_dataset.csv`) for model training.
+
+
+### `model/gene_only_train.py`
+
+-   Trains an ElasticNet logistic regression on RNA data with variance filtering and scaling, selects top 250 features, and evaluates via precision-recall metrics.
+
+-   Assesses robustness by permutation testing, comparing true AUC to shuffled-label AUCs to calculate empirical p-values.
+
+### `model/multi_omics_train.py`
+
+-   _Survival-informed Classification_: Builds a binary classifier using ElasticNet logistic regression on Cox survival risk scores to predict high vs. low risk patients after filtering and scaling.
+
+-   _Model Evaluation & Validation_: Validates the model with precision-recall curves and permutation tests to confirm robustness and significance.
+
+### `model/plots.py`
+
+-   _ROC Curve_: Plots model performance by showing true vs. false positive rates and AUC.
+
+-   _PCA_: Reduces top variable features to 3 components, visualizing them colored by survival correlation.
+
+### `external_cohort_validation/geo_cohort_validation.py`
+-   Downloads GEO datasets, maps probes to genes, extracts RNA features, and computes risk scores with a trained logistic regression model.
+
+- Processes survival data, assigns risk groups, and evaluates prognosis using Kaplan–Meier curves and AUC metrics in validation cohorts.
 
 ## ⚙️ Pipeline Overview
 
